@@ -86,16 +86,21 @@ def search_articles(client: anthropic.Anthropic, keywords: list[str]) -> list[di
         )
 
         if response.stop_reason == "end_turn":
-            for block in response.content:
-                if hasattr(block, "text"):
-                    text = block.text
-                    s = text.find("{")
-                    e = text.rfind("}") + 1
-                    if s >= 0 and e > s:
-                        try:
-                            return json.loads(text[s:e]).get("articles", [])[:MAX_ARTICLES]
-                        except json.JSONDecodeError:
-                            pass
+            # Concatenate all text blocks (response may be split across many blocks)
+            full_text = "".join(
+                block.text for block in response.content if hasattr(block, "text")
+            )
+            # Strip markdown code fences if present
+            for fence in ("```json", "```"):
+                if fence in full_text:
+                    full_text = full_text.split(fence, 1)[-1].rsplit("```", 1)[0]
+            s = full_text.find("{")
+            e = full_text.rfind("}") + 1
+            if s >= 0 and e > s:
+                try:
+                    return json.loads(full_text[s:e]).get("articles", [])[:MAX_ARTICLES]
+                except json.JSONDecodeError:
+                    pass
             return []
 
         # tool_use — add assistant turn and continue (server handles search execution)
